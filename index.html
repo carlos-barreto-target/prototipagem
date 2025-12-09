@@ -1,0 +1,348 @@
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://blacklabel.github.io/grouped_categories/grouped-categories.js"></script>
+<body>
+<figure class="highcharts-figure">
+    <div id="container"></div>
+</figure>
+
+<script>
+    
+
+    fetch('highcharts.csv')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.text();
+        })
+        .then(csvText => {
+            const lines = csvText.trim().split('\n');
+            const data = lines.map(line => line.split(';'));
+
+            // Helper to parse number
+            const parseNum = (str) => parseInt(str, 10) || 0;
+
+            // Process data
+            const groups = [
+                { name: "Com desconto", rows: [0, 1, 2, 3] },
+                { name: "Com Agravo até 20%", rows: [4, 5, 6, 7] },
+                { name: "Agravo acima de 20%", rows: [8, 9, 10, 11] }
+            ];
+
+            const seriesData = {
+                renovar: [],
+                renovada: [],
+                vencidas: [],
+                perdidas: []
+            };
+            
+            const bubbleCategories = [];
+            const xAxisCategories = [];
+            
+            let grandTotalRenovacoes = 0;
+            let grandTotalRenovada = 0;
+            let totalDescontoEAgravoAte20 = 0;
+
+            groups.forEach((group, groupIndex) => {
+                let groupTotalRenovacoes = 0;
+                let groupTotalRenovada = 0;
+                let groupTotal = 0;
+                const groupCategories = [];
+
+                group.rows.forEach(rowIndex => {
+                    if (data[rowIndex]) {
+                        const row = data[rowIndex];
+                        // CSV: ID;Name;Total;Renovar;Renovada;Vencidas;Perdidas
+                        const name = row[1];
+                        const total = parseNum(row[2]);
+                        const renovar = parseNum(row[3]);
+                        const renovada = parseNum(row[4]);
+                        const vencidas = parseNum(row[5]);
+                        const perdidas = parseNum(row[6]);
+
+                        seriesData.renovar.push(renovar);
+                        seriesData.renovada.push(renovada);
+                        seriesData.vencidas.push(vencidas);
+                        seriesData.perdidas.push(perdidas);
+
+                        groupCategories.push(name);
+
+                        // Bubble percentage
+                        const percent = total > 0 ? Math.round((renovada / total) * 100) : 0;
+                        bubbleCategories.push(percent + '%');
+
+                        groupTotalRenovacoes += (renovar + renovada);
+                        groupTotalRenovada += renovada;
+                        groupTotal += total;
+                    }
+                });
+
+                // Add spacer after group if not last
+                if (groupIndex < groups.length - 1) {
+                    seriesData.renovar.push(null);
+                    seriesData.renovada.push(null);
+                    seriesData.vencidas.push(null);
+                    seriesData.perdidas.push(null);
+                    bubbleCategories.push('');
+                    
+                    // Add group to xAxisCategories before adding spacer
+                    const groupPercent = groupTotalRenovacoes > 0 ? Math.round((groupTotalRenovada / groupTotal) * 100) : 0;
+                    const fmt = (n) => Highcharts.numberFormat(n, 0, ',', '.');
+                    
+                    xAxisCategories.push({
+                        name: `<div class='categoria-pai'>${group.name}:<br/><span>${fmt(groupTotal)} Apólices</span><br/><span>${fmt(groupTotalRenovacoes)} Renovações</span><br/><span>${groupPercent}% Renovado</span></div>`,
+                        categories: groupCategories
+                    });
+
+                    xAxisCategories.push({ name: "", categories: [""] }); // Spacer group
+                } else {
+                    // Last group
+                    const groupPercent = groupTotalRenovacoes > 0 ? Math.round((groupTotalRenovada / groupTotal) * 100) : 0;
+                    const fmt = (n) => Highcharts.numberFormat(n, 0, ',', '.');
+                    
+                    xAxisCategories.push({
+                        name: `<div class='categoria-pai'>${group.name}:<br/><span>${fmt(groupTotal)} Apólices</span><br/><span>${fmt(groupTotalRenovacoes)} Renovações</span><br/><span>${groupPercent}% Renovado</span></div>`,
+                        categories: groupCategories
+                    });
+                }
+
+                if (group.name === "Com desconto" || group.name === "Com Agravo até 20%") {
+                    grandTotalRenovacoes += groupTotalRenovacoes;
+                    grandTotalRenovada += groupTotalRenovada;
+                    totalDescontoEAgravoAte20 += groupTotal;
+                }
+            });
+
+            const grandPercent = grandTotalRenovacoes > 0 ? Math.round((grandTotalRenovada / totalDescontoEAgravoAte20) * 100) : 0;
+            const fmt = (n) => Highcharts.numberFormat(n, 0, ',', '.');
+            const captionText = `<div style="text-align: center; padding-top: 10px; border-top: 1px solid #ccc; margin-top: 10px; margin-left: 330px">Com Desconto e Agravo:<br/><span style="font-size: 14px; font-weight: bold">${fmt(totalDescontoEAgravoAte20)} Apólices | ${fmt(grandTotalRenovacoes)} Renovações | ${grandPercent}% Renovado</span></div>`;
+
+            createChart(seriesData, xAxisCategories, bubbleCategories, captionText);
+        })
+        .catch(error => {
+            console.error('Error loading CSV:', error);
+            alert('Erro ao carregar CSV. Verifique se está rodando em um servidor local ou se o arquivo existe.');
+        });
+
+    function createChart(seriesData, xAxisCategories, bubbleCategories, captionText) {
+        Highcharts.chart('container', {
+            chart: {
+                type: 'column',
+                style: {
+                    fontFamily: 'Helvetica, Arial, sans-serif'
+                },
+                backgroundColor: '#ffffff'
+            },
+            title: {
+                text: 'Quantidade de Apólices e % Renovado por faixa de Desconto/Agravo',
+                align: 'left',
+                style: {
+                    fontWeight: 'bold',
+                    fontSize: '22px',
+                    color: '#333'
+                }
+            },
+            subtitle: {
+                text: '[01/12/2025] à [05/12/2025]',
+                align: 'left',
+                style: {
+                    fontSize: '14px',
+                    color: '#333'
+                }
+            },
+            xAxis: [{
+                categories: xAxisCategories,
+                labels: {
+                    groupedOptions: [{
+                        style: {
+                            fontSize: '12px',
+                            color: '#666'
+                        }
+                    }, {
+                        y: 45,
+                        style: {
+                            fontSize: '14px',
+                            fontWeight: 'bold',
+                            color: '#333',
+                            // textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
+                        }
+                    }],
+                    rotation: 0,
+                    style: {
+                        fontSize: '13px',
+                        color: '#555'
+                    },
+                    useHTML: true
+                },
+                tickWidth: 0,
+                lineWidth: 1,
+                lineColor: '#ccd6eb',
+                plotLines: [{
+                    color: '#999',
+                    width: 1,
+                    value: 4,
+                    zIndex: 5
+                }, {
+                    color: '#999',
+                    width: 1,
+                    value: 9,
+                    zIndex: 5
+                }]
+            }, {
+                linkedTo: 0,
+                opposite: true,
+                categories: bubbleCategories,
+                labels: {
+                    useHTML: true,
+                    formatter: function () {
+                        if (!this.value || this.value.toString().trim() === "") return "";
+                        return '<div style="background: #2c3e50; color: white; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; box-shadow: 0 2px 2px rgba(0,0,0,0.2);">' + this.value + '</div>';
+                    },
+                    y: -5
+                },
+                lineWidth: 0,
+                tickWidth: 0,
+                gridLineWidth: 0
+            }],
+            yAxis: {
+                title: {
+                    enabled: false
+                },
+                labels: {
+                    enabled: false
+                },
+                stackLabels: {
+                    enabled: true,
+                    useHTML: true,
+                    formatter: function() {
+                        return '<span style="font-size: 13px; font-weight: bold; color: #333; text-shadow: 1px 1px 0px white;">' + Highcharts.numberFormat(this.total, 0, ',', '.') + '</span>';
+                    },
+                    y: -5,
+                    style: {
+                        fontWeight: 'bold',
+                        color: '#000'
+                    }
+                },
+                gridLineColor: '#f0f0f0'
+            },
+            caption: {
+                text: captionText,
+                useHTML: true,
+                align: 'left'
+            },
+            legend: {
+                align: 'right',
+                verticalAlign: 'top',
+                floating: false,
+                backgroundColor: 'white',
+                shadow: false,
+                itemStyle: {
+                    fontWeight: 'normal',
+                    color: '#333'
+                }
+            },
+            tooltip: {
+                shared: true,
+                useHTML: true,
+                outside: true,
+                headerFormat: '',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                borderColor: '#ccc',
+                borderRadius: 10,
+                shadow: true,
+                style: {
+                    zIndex: 9999
+                }
+            },
+            plotOptions: {
+                column: {
+                    stacking: 'normal',
+                    borderWidth: 0,
+                    borderRadius: 8,
+                    pointPadding: 0,
+                    groupPadding: 0.05,
+                    dataLabels: {
+                        enabled: true,
+                        color: '#fff',
+                        style: {
+                            textOutline: 'none',
+                            fontWeight: 'normal'
+                        },
+                        filter: {
+                            property: 'y',
+                            operator: '>',
+                            value: 0
+                        }
+                    }
+                }
+            },
+            credits: {
+                enabled: false
+            },
+            series: [{
+                name: 'A Renovar',
+                color: 'rgb(255, 213, 23)',
+                data: seriesData.renovar,
+                dataLabels: {
+                    color: '#333'
+                }
+            }, {
+                name: 'Renovada',
+                color: 'rgb(216, 30, 5)',
+                data: seriesData.renovada
+            }, {
+                name: 'Vencidas',
+                color: 'rgb(229, 107, 21)',
+                data: seriesData.vencidas
+            }, {
+                name: 'Perdidas',
+                color: 'rgb(254, 179, 128)',
+                data: seriesData.perdidas
+            }]
+        });
+    }
+
+</script>
+
+<style>
+body{
+    background-image: url(image.png);
+    background-repeat: no-repeat;
+    background-position: bottom center;
+    background-color: rgb(246,246,246);
+    min-height: calc(100vh - 130px);
+}
+#container {
+    background-color: white;
+    padding: 10px;
+    height: 570px;
+    margin: 0px auto;
+    background-clip: border-box;
+    border-radius: 10px;
+    box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .15);
+    border: 0!important;
+}
+
+.highcharts-figure{
+    width: 1280px;
+    margin: 1em auto;
+}
+
+.highcharts-credits{
+    display: none;
+}
+
+.categoria-pai{
+    margin-top: 10px;
+    font-size: 14px; 
+}
+
+.categoria-pai span{
+    font-size: 12px; 
+    color: #666; 
+    font-weight: normal
+}
+</style>
+
+</body>
